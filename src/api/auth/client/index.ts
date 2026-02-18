@@ -8,8 +8,14 @@ import { LoginEmailDto, RegisterByAdminDto, RegisterDto } from '../types'
 export class ClientAuthApi {
   private readonly client: AxiosInstance
 
-  constructor() {
-    this.client = new Request().apiClient
+  constructor(origin: string) {
+    this.client = new Request(origin ? { baseURL: origin } : undefined).apiClient
+  }
+
+  async verifyToken(headers: AxiosHeaders, accessToken: string): Promise<{ user: Pick<UserModel, 'id' | 'email' | 'role' | 'status'> }> {
+    const response = await this.client.post('/api/v1/auth/verify-token', { accessToken }, { headers: headers as Record<string, string> })
+
+    return response.data
   }
 
   async login(body: LoginEmailDto): Promise<{ success: boolean; message?: string }> {

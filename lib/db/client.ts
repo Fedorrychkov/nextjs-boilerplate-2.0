@@ -17,6 +17,46 @@ if (!global.mongooseCache) {
   global.mongooseCache = cached
 }
 
+/** Сбрасываем кэш только при ошибках подключения — следующий вызов connectDB() переподключится */
+function clearCacheOnConnectionError() {
+  cached.conn = null
+  cached.promise = null
+}
+
+function isConnectionError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false
+  const msg = (err as Error).message?.toLowerCase() ?? ''
+  const code = (err as NodeJS.ErrnoException).code ?? ''
+
+  return (
+    code === 'ECONNRESET' ||
+    code === 'ETIMEDOUT' ||
+    code === 'ENOTFOUND' ||
+    code === 'ECONNREFUSED' ||
+    msg.includes('connection reset') ||
+    msg.includes('connection closed') ||
+    msg.includes('topology was destroyed') ||
+    msg.includes('mongo network error') ||
+    (err as { name?: string }).name === 'MongoNetworkError'
+  )
+}
+
+let connectionListenersAttached = false
+
+function setupConnectionListeners() {
+  if (connectionListenersAttached) return
+
+  connectionListenersAttached = true
+  mongoose.connection.on('disconnected', () => {
+    clearCacheOnConnectionError()
+  })
+  mongoose.connection.on('error', (err) => {
+    if (isConnectionError(err)) {
+      clearCacheOnConnectionError()
+    }
+  })
+}
+
 async function connectDB() {
   if (cached.conn) {
     return cached.conn
@@ -37,8 +77,10 @@ async function connectDB() {
 
   try {
     cached.conn = await cached.promise
+    setupConnectionListeners()
   } catch (e) {
     cached.promise = null
+
     throw e
   }
 

@@ -3,7 +3,7 @@
 import { defaultGuard, PageProps } from '@lib/page'
 
 const Dashboard = async (props: PageProps) => {
-  await defaultGuard(props)
+  await defaultGuard({ ...props, segments: ['dashboard'] })
 
   return (
     <>
