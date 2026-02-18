@@ -7,7 +7,7 @@ import { useProfileQuery, useRefreshTokenQuery } from '~/query/auth'
 
 import { AuthUserContext } from './useAuth'
 
-const expectedRoutes = ['/login', '/logout', '/refresh']
+const expectedRoutes = ['/login', '/logout', '/refresh', '/sign-up', '/']
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [isClient, setIsClient] = useState(false)

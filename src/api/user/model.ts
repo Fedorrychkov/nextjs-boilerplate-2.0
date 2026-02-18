@@ -1,6 +1,7 @@
 export type UserModel = {
   id: string
   role?: UserRole
+  password?: string | null
   fullName?: string | null
   email?: string | null
   actionUserId?: string | null

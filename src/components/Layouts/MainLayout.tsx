@@ -11,13 +11,16 @@ import { SpinnerScreen } from '../Loaders'
 import { ExpandableTabs } from '../ui/expandable-tabs'
 
 export const MainLayout = ({ children, className }: { children: React.ReactNode; className?: string }) => {
-  // const { isLoading, isFetched } = useAuth()
   const router = useRouter()
 
   const isLoading = false
   const isFetched = true
 
-  const tabs = [{ title: 'Главная', icon: LayoutDashboardIcon, url: '/' }, { type: 'separator' }, { title: 'Профиль', icon: UserIcon, url: '/profile' }]
+  const tabs = [
+    { title: 'Dashboard', icon: LayoutDashboardIcon, url: '/dashboard' },
+    { type: 'separator' },
+    { title: 'Profile', icon: UserIcon, url: '/settings/profile' },
+  ]
 
   const handleSelectTab = (index: number | null) => {
     if (isNil(index)) return
@@ -35,7 +38,7 @@ export const MainLayout = ({ children, className }: { children: React.ReactNode;
         {isLoading || !isFetched ? <SpinnerScreen /> : children}
       </div>
 
-      <div className="w-full flex flex-col px-4 container mx-auto items-center fixed bottom-0 left-0 right-0 z-10 safe-area-bottom safe-area-x pb-4">
+      <div className="w-full flex flex-col px-4 container mx-auto items-center fixed bottom-4 left-0 right-0 z-10 safe-area-bottom safe-area-x pb-4">
         <ExpandableTabs onChange={handleSelectTab} tabs={tabs} />
       </div>
     </div>

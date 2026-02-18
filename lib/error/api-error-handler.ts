@@ -37,9 +37,12 @@ export const apiErrorHandlerContainer =
         )
       }
 
+      // Обработка обычных ошибок (например, из сервисов)
+      const errorMessage = error instanceof Error ? error.message : 'Something goes wrong...'
+
       return res.json(
         {
-          message: 'Something goes wrong...',
+          message: errorMessage,
         },
         {
           status: 500,

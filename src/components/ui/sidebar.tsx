@@ -7,7 +7,6 @@ import { usePathname, useRouter } from 'next/navigation'
 import { Fragment, useState } from 'react'
 
 import { useAuth } from '~/providers'
-import { useUserProfileQuery } from '~/query/user'
 import { cn } from '~/utils/cn'
 import { matchesPathname } from '~/utils/matchPath'
 
@@ -119,7 +118,7 @@ const ProfileSection = () => {
   const router = useRouter()
 
   const { authUser, isLoading } = useAuth()
-  const { data: profile, isLoading: isProfileLoading, isFetched: isProfileFetched } = useUserProfileQuery(!!authUser?.id)
+  // const { data: profile, isLoading: isProfileLoading, isFetched: isProfileFetched } = useUserProfileQuery(!!authUser?.id)
 
   return (
     <div className="p-4 border-b border-gray-200">
@@ -132,17 +131,6 @@ const ProfileSection = () => {
             <Skeleton width="100%" height={24} />
           ) : (
             <div className="flex flex-col gap-1">
-              {profile && !isProfileLoading && isProfileFetched ? (
-                <p
-                  className={cn('text-md text-gray-800 truncate', {
-                    hidden: !profile?.fullName,
-                  })}
-                >
-                  {profile?.fullName}
-                </p>
-              ) : (
-                <Skeleton width="100%" height={24} />
-              )}
               <p className="text-sm text-gray-500 truncate">{authUser?.email}</p>
             </div>
           )}
