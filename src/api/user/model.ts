@@ -1,6 +1,6 @@
 export type UserModel = {
   id: string
-  role?: UserRole[] | UserRole
+  role?: UserRole
   fullName?: string | null
   email?: string | null
   actionUserId?: string | null
