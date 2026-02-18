@@ -1,0 +1,15 @@
+# Dependency directories
+node_modules
+
+# IDE / Editor
+.idea
+
+# Git
+.git
+.gitignore
+
+# Docker files
+.dockerignore
+Dockerfile*
+
+README.md

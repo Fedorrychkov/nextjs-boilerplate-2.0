@@ -1,0 +1,287 @@
+name: Reusable Deploy Config
+
+on:
+  workflow_call:
+    inputs:
+      domain:
+        description: Target domain
+        required: true
+        type: string
+      api_env:
+        description: API env (stage|prod|feature)
+        required: true
+        type: string
+      env_file:
+        description: .env file path
+        required: true
+        type: string
+      nginx_mode:
+        description: http|https
+        required: true
+        type: string
+      certbot_test_mode:
+        description: Use certbot staging
+        required: false
+        default: false
+        type: boolean
+      migrations_run:
+        description: Enable database migrations
+        required: false
+        default: false
+        type: boolean
+      blue_green_enabled:
+        description: Enable blue-green deployment
+        required: false
+        default: false
+        type: boolean
+    secrets:
+      server_host:
+        required: true
+      server_username:
+        required: true
+      server_password:
+        required: true
+      env:
+        required: true
+      db_postgresql:
+        required: false
+
+permissions: write-all
+
+concurrency:
+  group: reusable-deploy-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      DOMAIN: ${{ inputs.domain }}
+      API_ENV: ${{ inputs.api_env }}
+      ENV_FILE: ${{ inputs.env_file }}
+      NGINX_MODE: ${{ inputs.nginx_mode }}
+      MIGRATIONS_RUN: ${{ inputs.migrations_run }}
+    steps:
+      - name: ⬇️ Checkout repo
+        uses: actions/checkout@v2
+
+      - name: ⎔ Setup node
+        uses: actions/setup-node@v2
+        with:
+          node-version: 22
+
+      - name: Log start params
+        run: |
+          echo 'Event name: ${{ inputs.domain }}'
+          echo 'Ref name: ${{ inputs.api_env }}'
+          echo 'Env file: ${{ inputs.env_file }}'
+          echo 'Nginx mode: ${{ inputs.nginx_mode }}'
+          echo 'Certbot test mode: ${{ inputs.certbot_test_mode }}'
+          echo 'Migrations run: ${{ inputs.migrations_run }}'
+          echo 'Blue-green enabled: ${{ inputs.blue_green_enabled }}'
+          echo 'Server host: ${{ secrets.server_host }}'
+
+      - name: 📥 Install dependencies
+        run: |
+          npm install --legacy-peer-deps
+
+      - name: Create env and service-account.json files
+        run: |
+          if [ -n "${{ secrets.env }}" ]; then echo '${{ secrets.env }}' >> ${{ inputs.env_file }}; fi
+          echo "NODE_ENV=${{ inputs.api_env }}" >> ${{ inputs.env_file }}
+          if [ -n "${{ secrets.db_postgresql }}" ]; then echo '${{ secrets.db_postgresql }}' >> db-postgresql-certificate.${{ inputs.api_env }}.crt; fi
+
+      - name: 🚀 Build project
+        run: |
+          if [ "${{ inputs.api_env }}" = "stage" ]; then npm run build:stage; else npm run build:prod; fi
+
+      - name: 🗑️ Remove node_modules and .git
+        run: |
+          rm -rf node_modules .git .github
+
+      - name: 📦 Copy project files to server (to app_new)
+        uses: appleboy/scp-action@master
+        with:
+          source: "*"
+          target: "~/app_new"
+          port: 22
+          host: ${{ secrets.server_host }}
+          username: ${{ secrets.server_username }}
+          password: ${{ secrets.server_password }}
+          timeout: '300s'
+          overwrite: true
+          strip_components: 0
+
+      - name: 🗑️ Remove all tar.gz files from server
+        uses: appleboy/ssh-action@master
+        env:
+          GH_USERNAME: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          host: ${{ secrets.server_host }}
+          username: ${{ secrets.server_username }}
+          password: ${{ secrets.server_password }}
+          port: 22
+          envs: GH_USERNAME, GITHUB_TOKEN
+          script: |
+            find ~ -type f -name '*.tar.gz' -exec rm -f {} +
+
+      - name: 🚀 Prepare and run on server (Blue/Green or Cold)
+        id: deploy_run
+        uses: appleboy/ssh-action@master
+        timeout-minutes: 30
+        env:
+          GH_USERNAME: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CERTBOT_TEST_MODE: ${{ inputs.certbot_test_mode }}
+          DOMAINS: ${{ inputs.domain }}
+        with:
+          host: ${{ secrets.server_host }}
+          username: ${{ secrets.server_username }}
+          password: ${{ secrets.server_password }}
+          port: 22
+          envs: GH_USERNAME, GITHUB_TOKEN
+          command_timeout: 25m
+          script: |
+            docker volume create letsencrypt_certs || true
+            docker volume create certbot_logs || true
+
+            USE_BG=false
+            if [ "${{ inputs.blue_green_enabled }}" = "true" ]; then
+              if docker ps --format '{{.Names}}' | grep -q '^api-service$'; then
+                if docker ps --filter name=api-service --format '{{.Status}}' | grep -q 'healthy'; then
+                  USE_BG=true
+                  echo "Blue-green enabled and found healthy api-service container, using Blue/Green deploy"
+                else
+                  echo "Blue-green enabled but api-service container not healthy, using cold deploy"
+                fi
+              else
+                echo "Blue-green enabled but no api-service container found, using cold deploy"
+              fi
+            else
+              echo "Blue-green deployment disabled, using cold deploy"
+            fi
+
+            if [ "$USE_BG" = true ]; then
+              echo "Blue/Green mode: validating GREEN in app_new..."
+              if [ -d "$HOME/app_new" ]; then
+                cd "$HOME/app_new"
+                chmod +x scripts/local-containers-run.sh || true
+                if ! MIGRATIONS_RUN=${{ inputs.migrations_run }} ./scripts/local-containers-run.sh bg-validate ${{ inputs.api_env }}; then
+                  echo "Blue/Green validation failed. Cleaning up and falling back to cold deploy."
+                  docker stop api-service-green redis-green 2>/dev/null || true
+                  docker rm -f api-service-green redis-green 2>/dev/null || true
+                  cd "$HOME"
+                  USE_BG=false
+                else
+                  echo "GREEN validation successful. Proceeding with Blue/Green deploy."
+                fi
+                if [ "$USE_BG" = true ]; then
+                  cd "$HOME"
+                  echo "GREEN validated. Performing fast swap..."
+                  rm -rf "$HOME/app.bak" || true
+                  if [ -d "$HOME/app" ]; then mv "$HOME/app" "$HOME/app.bak" || true; fi
+                  mv "$HOME/app_new" "$HOME/app"
+                  cd "$HOME/app"
+                  chmod +x scripts/local-containers-run.sh || true
+                  API_ENV=${{ inputs.api_env }} ENV_FILE=${{ inputs.env_file }} DOMAINS=${{ inputs.domain }} FIRST_DOMAIN=${{ inputs.domain }} NGINX_MODE=${{ inputs.nginx_mode }} \
+                    docker-compose -f docker-compose.local.yml stop core-api redis || true
+                  API_ENV=${{ inputs.api_env }} ENV_FILE=${{ inputs.env_file }} DOMAINS=${{ inputs.domain }} FIRST_DOMAIN=${{ inputs.domain }} NGINX_MODE=${{ inputs.nginx_mode }} \
+                    docker-compose -f docker-compose.local.yml rm -f core-api redis || true
+                  API_ENV=${{ inputs.api_env }} ENV_FILE=${{ inputs.env_file }} DOMAINS=${{ inputs.domain }} FIRST_DOMAIN=${{ inputs.domain }} NGINX_MODE=${{ inputs.nginx_mode }} \
+                    docker-compose -f docker-compose.local.yml build --no-cache core-api
+                  API_ENV=${{ inputs.api_env }} ENV_FILE=${{ inputs.env_file }} DOMAINS=${{ inputs.domain }} FIRST_DOMAIN=${{ inputs.domain }} NGINX_MODE=${{ inputs.nginx_mode }} \
+                    docker-compose -f docker-compose.local.yml up -d core-api redis
+                  docker kill -s HUP core-nginx-service || ( \
+                    API_ENV=${{ inputs.api_env }} ENV_FILE=${{ inputs.env_file }} NGINX_MODE=${{ inputs.nginx_mode }} DOMAINS=${{ inputs.domain }} FIRST_DOMAIN=${{ inputs.domain }} \
+                      docker-compose -f docker-compose.local.yml stop nginx || true; \
+                    API_ENV=${{ inputs.api_env }} ENV_FILE=${{ inputs.env_file }} NGINX_MODE=${{ inputs.nginx_mode }} DOMAINS=${{ inputs.domain }} FIRST_DOMAIN=${{ inputs.domain }} \
+                      docker-compose -f docker-compose.local.yml rm -f nginx || true; \
+                    API_ENV=${{ inputs.api_env }} ENV_FILE=${{ inputs.env_file }} NGINX_MODE=${{ inputs.nginx_mode }} DOMAINS=${{ inputs.domain }} FIRST_DOMAIN=${{ inputs.domain }} \
+                      docker-compose -f docker-compose.local.yml up -d nginx \
+                  ) || true
+                  MIGRATIONS_RUN=${{ inputs.migrations_run }} ./scripts/local-containers-run.sh bg-down ${{ inputs.api_env }} || true
+                  API_ENV=${{ inputs.api_env }} ENV_FILE=${{ inputs.env_file }} NGINX_MODE=${{ inputs.nginx_mode }} DOMAINS=${{ inputs.domain }} FIRST_DOMAIN=${{ inputs.domain }} \
+                    docker-compose -f docker-compose.local.yml stop certbot prometheus nginx-prometheus-exporter prometheus-node-exporter cadvisor promtail loki telegraf grafana || true
+                  API_ENV=${{ inputs.api_env }} ENV_FILE=${{ inputs.env_file }} NGINX_MODE=${{ inputs.nginx_mode }} DOMAINS=${{ inputs.domain }} FIRST_DOMAIN=${{ inputs.domain }} \
+                    docker-compose -f docker-compose.local.yml rm -f certbot prometheus nginx-prometheus-exporter prometheus-node-exporter cadvisor promtail loki telegraf grafana || true
+                  API_ENV=${{ inputs.api_env }} ENV_FILE=${{ inputs.env_file }} NGINX_MODE=${{ inputs.nginx_mode }} DOMAINS=${{ inputs.domain }} FIRST_DOMAIN=${{ inputs.domain }} \
+                    docker-compose -f docker-compose.local.yml up -d certbot prometheus nginx-prometheus-exporter prometheus-node-exporter cadvisor promtail loki telegraf grafana redis
+                fi
+              else
+                echo "No app_new found. Falling back to cold deploy path."
+                if [ -d "$HOME/app" ]; then
+                  cd "$HOME/app" && [ -x scripts/local-containers-run.sh ] && ./scripts/local-containers-run.sh clean || true
+                fi
+                rm -rf "$HOME/app.bak" || true
+                if [ -d "$HOME/app" ]; then mv "$HOME/app" "$HOME/app.bak" || true; fi
+                mv "$HOME/app_new" "$HOME/app"
+                cd "$HOME/app" && chmod +x scripts/local-containers-run.sh
+                MIGRATIONS_RUN=${{ inputs.migrations_run }} CERTBOT_TEST_MODE=${{ inputs.certbot_test_mode }} ./scripts/local-containers-run.sh https ${{ inputs.api_env }} -d ${{ inputs.domain }}
+              fi
+            else
+              echo "Cold deploy path..."
+              if [ -d "$HOME/app_new" ]; then
+                if [ -d "$HOME/app" ]; then
+                  cd "$HOME/app" && [ -x scripts/local-containers-run.sh ] && ./scripts/local-containers-run.sh clean || true
+                  cd "$HOME"
+                fi
+                rm -rf "$HOME/app.bak" || true
+                if [ -d "$HOME/app" ]; then mv "$HOME/app" "$HOME/app.bak" || true; fi
+                mv "$HOME/app_new" "$HOME/app"
+              fi
+              cd "$HOME/app"
+              chmod +x scripts/local-containers-run.sh
+              MIGRATIONS_RUN=${{ inputs.migrations_run }} CERTBOT_TEST_MODE=${{ inputs.certbot_test_mode }} ./scripts/local-containers-run.sh https ${{ inputs.api_env }} -d ${{ inputs.domain }}
+              API_ENV=${{ inputs.api_env }} ENV_FILE=${{ inputs.env_file }} NGINX_MODE=${{ inputs.nginx_mode }} DOMAINS=${{ inputs.domain }} FIRST_DOMAIN=${{ inputs.domain }} \
+                docker-compose -f docker-compose.local.yml stop prometheus nginx-prometheus-exporter prometheus-node-exporter cadvisor promtail loki telegraf grafana || true
+              API_ENV=${{ inputs.api_env }} ENV_FILE=${{ inputs.env_file }} NGINX_MODE=${{ inputs.nginx_mode }} DOMAINS=${{ inputs.domain }} FIRST_DOMAIN=${{ inputs.domain }} \
+                docker-compose -f docker-compose.local.yml rm -f prometheus nginx-prometheus-exporter prometheus-node-exporter cadvisor promtail loki telegraf grafana || true
+              API_ENV=${{ inputs.api_env }} ENV_FILE=${{ inputs.env_file }} NGINX_MODE=${{ inputs.nginx_mode }} DOMAINS=${{ inputs.domain }} FIRST_DOMAIN=${{ inputs.domain }} \
+                docker-compose -f docker-compose.local.yml up -d prometheus nginx-prometheus-exporter prometheus-node-exporter cadvisor promtail loki telegraf grafana
+            fi
+
+      - name: 🧹 Cleanup backup on success
+        if: always() && steps.deploy_run.outcome == 'success'
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.server_host }}
+          username: ${{ secrets.server_username }}
+          password: ${{ secrets.server_password }}
+          port: 22
+          script: |
+            if [ -d "$HOME/app.bak" ]; then
+              echo "Cleaning app.bak after successful deploy..."
+              rm -rf "$HOME/app.bak"
+            fi
+
+            echo "Logs certbot-init:"
+
+            cd $HOME/app || true
+            docker-compose -f docker-compose.local.yml logs certbot-init || true
+
+      - name: 🧹 Cleanup app_new containers and images
+        if: always()
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.server_host }}
+          username: ${{ secrets.server_username }}
+          password: ${{ secrets.server_password }}
+          port: 22
+          script: |
+            echo "Logs certbot-init:"
+            cd $HOME/app || true
+            docker-compose -f docker-compose.local.yml logs certbot-init || true
+            docker-compose -f docker-compose.local.yml restart nginx || true
+
+            echo "🧹 Starting Docker cleanup..."
+            docker images --filter "reference=app_new_*" --format "table {{.Repository}}:{{.Tag}}\t{{.ID}}\t{{.Size}}" || true
+            docker rmi $(docker images --filter "reference=app_new_*" --format "{{.ID}}") 2>/dev/null || true
+            docker images --filter "dangling=true" --format "table {{.Repository}}:{{.Tag}}\t{{.ID}}\t{{.Size}}" || true
+            docker image prune -f || true
+            docker container prune -f || true
+            docker network prune -f || true
+            docker builder prune -f || true
+            docker volume prune -f || true
+
+            echo "✅ Docker cleanup completed"

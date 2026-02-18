@@ -1,0 +1,28 @@
+name: Production Deploy
+on:
+  push:
+    branches:
+      - main
+
+permissions: write-all
+
+concurrency:
+  group: prod-deploy
+  cancel-in-progress: true
+
+jobs:
+  call-reusable:
+    uses: ./.github/workflows/reusable-deploy-config.yml
+    with:
+      domain: circle-test.vision-ai.io
+      api_env: prod
+      env_file: .env.prod
+      nginx_mode: https
+      certbot_test_mode: false
+      migrations_run: false
+      blue_green_enabled: false
+    secrets:
+      server_host: ${{ secrets.PROD_WEB_HOST }}
+      server_username: ${{ secrets.PROD_WEB_USERNAME }}
+      server_password: ${{ secrets.PROD_WEB_PASSWORD }}
+      env: ${{ secrets.WEB_ENV_PROD }}
