@@ -1,12 +1,16 @@
 import { JWT_CONFIG } from '@config/env'
 import connectDB from '@lib/db/client'
+import { subscriptionFree } from '@lib/db/mock/subscription.mock'
 import RefreshToken from '@lib/db/models/RefreshToken'
+import Subscription from '@lib/db/models/Subscription'
 import User from '@lib/db/models/User'
 import { generateAccessToken, generateRefreshToken, getTokenExpiration, verifyRefreshToken } from '@lib/jwt/utils'
 
 import { AuthResponse } from '~/api/auth/model'
 import { LoginEmailDto, RegisterByAdminDto, RegisterDto } from '~/api/auth/types'
+import { SubscriptionStatus, SubscriptionType } from '~/api/subscription'
 import { UserRole, UserStatus } from '~/api/user'
+import { logger } from '~/utils/logger'
 
 export class AuthService {
   /**
@@ -30,6 +34,17 @@ export class AuthService {
       phone: data.phone,
       role: UserRole.USER,
       status: UserStatus.ACTIVE,
+    })
+
+    await Subscription.create({
+      userId: user._id,
+      status: SubscriptionStatus.ACTIVE,
+      type: SubscriptionType.FREE,
+      price: subscriptionFree.price,
+      currency: subscriptionFree.currency,
+      totalTokensLimit: subscriptionFree.totalTokensLimit,
+    }).catch((error) => {
+      logger.error(error)
     })
 
     return this.generateAuthResponse(user)

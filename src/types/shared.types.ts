@@ -8,5 +8,5 @@ export type AnyCurrency = 'XTR' | 'TON' | 'RUB' | AnyString
 
 export type PaginationResponse<T> = {
   list: T[]
-  total: number
+  total?: number | null
 }

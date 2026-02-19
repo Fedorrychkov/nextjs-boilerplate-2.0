@@ -1,6 +1,5 @@
 import bcrypt from 'bcryptjs'
 import mongoose, { Document, Model, Schema } from 'mongoose'
-import { v4 as uuidv4 } from 'uuid'
 
 import { UserModel, UserRole, UserStatus } from '~/api/user'
 import { time } from '~/utils/time'
