@@ -8,7 +8,7 @@ import * as React from 'react'
 import { cn } from '~/utils/cn'
 import { logger } from '~/utils/logger'
 
-import { FileUploader } from '../File'
+// import { FileUploader } from '../File'
 
 const buttonVariants = cva(
   'inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50',
@@ -104,7 +104,7 @@ const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
           className,
         )}
       >
-        <FileUploader files={files} handleSetFiles={handleSetFiles}>
+        {/* <FileUploader files={files} handleSetFiles={handleSetFiles}>
           {(props) => (
             <>
               {!props?.hasUploadedFiles && (
@@ -124,7 +124,7 @@ const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
               )}
             </>
           )}
-        </FileUploader>
+        </FileUploader> */}
         <form onSubmit={handleSubmit} className="flex w-full items-center gap-2">
           <input
             ref={inputRef}

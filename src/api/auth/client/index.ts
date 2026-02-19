@@ -8,7 +8,7 @@ import { LoginEmailDto, RegisterByAdminDto, RegisterDto } from '../types'
 export class ClientAuthApi {
   private readonly client: AxiosInstance
 
-  constructor(origin: string) {
+  constructor(origin?: string) {
     this.client = new Request(origin ? { baseURL: origin } : undefined).apiClient
   }
 
