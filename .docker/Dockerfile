@@ -1,4 +1,4 @@
-FROM node:22.14.0
+FROM node:24.13.1
 WORKDIR /usr/src/api
 
 # Проверка и установка корректного значения API_ENV
