@@ -129,7 +129,7 @@ jobs:
       - name: 🚀 Prepare and run on server (Blue/Green or Cold)
         id: deploy_run
         uses: appleboy/ssh-action@master
-        timeout-minutes: 30
+        timeout-minutes: 12
         env:
           GH_USERNAME: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

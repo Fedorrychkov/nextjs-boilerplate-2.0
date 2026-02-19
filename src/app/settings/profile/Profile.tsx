@@ -34,7 +34,7 @@ const Profile = () => {
               <Typography variant="Body/M/Semibold">Role</Typography>
               <Typography variant="Body/M/Regular">{user?.role}</Typography>
             </div>
-            <Button onClick={() => router.push('/logout')}>Выход</Button>
+            <Button onClick={() => router.push('/logout')}>Logout</Button>
           </div>
         )}
       </div>

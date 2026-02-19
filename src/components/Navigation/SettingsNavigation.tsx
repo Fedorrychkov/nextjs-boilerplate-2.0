@@ -52,7 +52,7 @@ const SettingsNavigation = (props: Props) => {
   )
 }
 
-const nav = [{ title: 'Профиль', url: '/settings/profile', icon: <UserRoundIcon width={16} height={16} /> }]
+const nav = [{ title: 'Profile', url: '/settings/profile', icon: <UserRoundIcon width={16} height={16} /> }]
 
 export const SettingsNavigationLazy = (props: Omit<Props, 'nav'>) => {
   return (

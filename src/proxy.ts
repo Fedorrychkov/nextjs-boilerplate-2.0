@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server'
 
 import { time } from '~/utils/time'
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const clientIP = request.headers.get('x-client-ip')
   const processedBy = request.headers.get('x-processed-by')
   const requestId = request.headers.get('x-request-id')
