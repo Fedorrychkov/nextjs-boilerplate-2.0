@@ -253,8 +253,8 @@ services:
     container_name: core-nginx-service
     environment:
       - NGINX_MODE=${NGINX_MODE:-http}
-      - DOMAINS=${DOMAINS:-circle-test.vision-ai.local.local,www.circle-test.vision-ai.local.local}
-      - FIRST_DOMAIN=${FIRST_DOMAIN:-circle-test.vision-ai.local.local}
+      - DOMAINS=${DOMAINS:-circle-test.visn-ai.local.local,www.circle-test.visn-ai.local.local}
+      - FIRST_DOMAIN=${FIRST_DOMAIN:-circle-test.visn-ai.local.local}
     healthcheck:
       test: |
         /bin/sh -c '
@@ -313,7 +313,7 @@ services:
     container_name: service-api-certbot-init
     environment:
       - CERTBOT_EMAIL=${CERTBOT_EMAIL:-fedorrychkov@yandex.ru}
-      - DOMAINS=${DOMAINS:-circle-test.vision-ai.local.local}
+      - DOMAINS=${DOMAINS:-circle-test.visn-ai.local.local}
       - CERTBOT_TEST_MODE=${CERTBOT_TEST_MODE:-false}
     build:
       context: .
@@ -349,7 +349,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
       - CERTBOT_EMAIL=${CERTBOT_EMAIL:-fedorrychkov@yandex.ru}
-      - DOMAINS=${DOMAINS:-circle-test.vision-ai.local.local}
+      - DOMAINS=${DOMAINS:-circle-test.visn-ai.local.local}
       - CERTBOT_TEST_MODE=${CERTBOT_TEST_MODE:-false}
     networks:
       - api_network

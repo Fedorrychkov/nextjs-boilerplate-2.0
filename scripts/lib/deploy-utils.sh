@@ -65,12 +65,12 @@ function parse_domains() {
         domains=$(echo "$raw_domains" | sed 's/^.*-d //')  # Извлекаем всё после -d
         # Если после -d пусто, используем значение по умолчанию
         if [[ -z "$domains" ]]; then
-            domains="circle-test.vision-ai.local,www.circle-test.vision-ai.local"
+            domains="circle-test.visn-ai.local,www.circle-test.visn-ai.local"
             echo "No domain specified, using default: $domains" >&2
         fi
     else
         # Если нет флага -d, используем значение по умолчанию
-        domains="circle-test.vision-ai.local,www.circle-test.vision-ai.local"
+        domains="circle-test.visn-ai.local,www.circle-test.visn-ai.local"
         echo "No -d flag found, using default: $domains" >&2
     fi
     

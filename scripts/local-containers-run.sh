@@ -128,8 +128,8 @@ function renew_certificates() {
         API_ENV=${env} \
         ENV_FILE=${env_file} \
         NGINX_MODE=https \
-        DOMAINS=${DOMAINS:-circle-test.vision-ai.io} \
-        FIRST_DOMAIN=${FIRST_DOMAIN:-circle-test.vision-ai.io} \
+        DOMAINS=${DOMAINS:-circle-test.visn-ai.io} \
+        FIRST_DOMAIN=${FIRST_DOMAIN:-circle-test.visn-ai.io} \
         CERTBOT_TEST_MODE=${CERTBOT_TEST_MODE:-false} \
         docker-compose -f ${COMPOSE_FILE} up -d certbot
         
