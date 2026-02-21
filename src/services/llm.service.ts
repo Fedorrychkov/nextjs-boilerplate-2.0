@@ -95,6 +95,32 @@ export class LLMService {
   }
 
   /**
+   * Стриминг ответа по чанкам (для передачи на клиент).
+   * @param messages - Массив сообщений для диалога
+   * @param options - Опции для запроса
+   * @yields Текстовые чанки ответа
+   */
+  async *chatStream(messages: ChatMessage[], options?: ChatCompletionOptions): AsyncGenerator<string> {
+    const client = this.getClient()
+    const { model = 'gpt-4o-mini', temperature = 0.7, maxTokens = 1000 } = options || {}
+
+    const stream = await client.chat.completions.create({
+      model,
+      messages: messages.map((msg) => ({ role: msg.role, content: msg.content })),
+      temperature,
+      max_tokens: maxTokens,
+      stream: true,
+    })
+
+    for await (const chunk of stream) {
+      const delta = chunk.choices[0]?.delta?.content ?? ''
+
+      // Отдаём чанк при наличии delta или usage (usage приходит в последнем чанке, часто без delta)
+      if (delta) yield delta
+    }
+  }
+
+  /**
    * Простой запрос к ChatGPT (без истории диалога)
    * @param prompt - Текст запроса
    * @param systemPrompt - Системный промпт (опционально)
@@ -129,6 +155,38 @@ export class LLMService {
     const response = await this.ask(prompt, undefined, options)
 
     return response.content
+  }
+
+  /**
+   * Лёгкий вызов LLM для обнаружения PII и оборачивания в теги.
+   * Возвращает тот же текст, где каждый фрагмент PII обёрнут в <spoiler>...</spoiler>.
+   * Без стрима, та же модель — для использования во время стрима основного ответа.
+   */
+  async detectAndWrapPii(text: string, options?: ChatCompletionOptions): Promise<string> {
+    if (!text.trim()) return text
+
+    const systemPrompt = `You are a PII (Personally Identifiable Information) detector.
+Your task is to return the EXACT same text, but wrap every PII span in <spoiler>...</spoiler>.
+
+PII includes: email addresses, phone numbers (any format), full names, physical addresses,
+IDs, card numbers, and any other data that can identify a person.
+
+Rules:
+- Return ONLY the text with PII wrapped. No explanations, no preamble.
+- Do not add or remove any non-PII characters. Preserve all spaces, newlines, punctuation.
+- Wrap each contiguous PII span in <spoiler>...</spoiler>.
+  Example: "Contact me at john@example.com" -> "Contact me at <spoiler>john@example.com</spoiler>".
+- If there is no PII, return the text unchanged.`
+
+    const response = await this.ask(text, systemPrompt, {
+      ...options,
+      model: options?.model ?? 'gpt-4o-mini',
+      temperature: 0,
+      maxTokens: 4000,
+      stream: false,
+    })
+
+    return response.content.trim()
   }
 
   /**
